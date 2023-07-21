@@ -42,9 +42,9 @@ def invoice(update: Update, context: CallbackContext) -> None:
             id=str(uuid.uuid4()),  # Generate a random ID for this result
             title=f"Создать счет • {amount} рублей",
             description=f"Продукт: {product}",  
-            input_message_content=InputTextMessageContent(f"""🧾 К оплате: {amount} рублей.
+            input_message_content=InputTextMessageContent(f"""🧾 Заказ на сумму: {amount} рублей.
         
-Для того, чтобы оплатить счет жми кнопку внизу. 👇 """),
+Для оплаты, нажмите кнопку Оплатить ⬇️ """),
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("💳 Оплатить", url=pay_url)]
             ]),
@@ -67,10 +67,10 @@ def handle_payment(update: Update, context: CallbackContext) -> None:
         query.edit_message_text(text="Этот счет больше не действителен.")
     else:
         # The invoice is not paid, proceed with the payment process
-        query.edit_message_text(text="""📎🧾 Для проверки, отправьте скриншот перевода.
+        query.edit_message_text(text="""🖼️ Пожалуйста, отправьте боту скриншот вашего перевода для проверки.
         """,
                                 reply_markup=InlineKeyboardMarkup([
-                                    [InlineKeyboardButton("🔙 К реквизитам", callback_data='go_back')]
+                                    [InlineKeyboardButton("🔙 Назад", callback_data='go_back')]
                                 ]))
 
 
@@ -82,19 +82,19 @@ def go_back(update: Update, context: CallbackContext) -> None:
     card_number, bank = database.get_current_card_and_bank()
     
     query.edit_message_text(text=f"""
-🧾 Новый счет. К оплате: {amount} рублей.  
+👉🏻 Вам необходимо оплатить заказ на сумму {amount} рублей.  
 
-Для оплаты, переведите деньги на карту банка РФ
+Что оплатить ваш заказ, переведите средства на карту банка РФ
 
-👉🏻 Реквизиты карты:
+💳 Номер карты для перевода:
 {bank} {card_number}
 
-Перевели деньги? Нажмите на кнопку Я оплатил внизу 👇 
+После того, как сделаете перевод, нажмите на кнопку ✅ Я оплатил.
 
-Если не получилось или есть вопросы, нажми на кнопку 👨🏻‍💼 Помощь. """,
+Если возникли трудности с оплатой, нажмите кнопку ❓ Поддержка.""",
                             reply_markup=InlineKeyboardMarkup([
                                 [InlineKeyboardButton("✅ Я оплатил", callback_data='i_paid'),
-                                 InlineKeyboardButton("👨🏻‍💼 Помощь", url=config.MANAGER_URL)]
+                                 InlineKeyboardButton("❓ Поддержка", url=config.MANAGER_URL)]
                             ]))
 
 
@@ -166,9 +166,9 @@ def handle_screenshot(update: Update, context: CallbackContext) -> None:
 
                 logger.info(f"Sent invoice details to payment manager: id={manager_id}")
 
-            context.bot.send_message(chat_id=update.effective_chat.id, text=""" Скрин получен. 
+            context.bot.send_message(chat_id=update.effective_chat.id, text="""🔎 Ваш перевод был отправлен на проверку. 
             
-        🔎 Проверяем.""")
+         Ожидайте.""")
 
             logger.info(f"Sent thank you message to user: id={user_id}")
         else:
@@ -201,12 +201,10 @@ def approve_invoice(update: Update, context: CallbackContext) -> None:
         user_id = invoice_details["user_id"]
         amount = invoice_details["amount"]
         name = invoice_details["name"]
-        msg = f""" Скриншот прошел проверку! 👊🏼 
-        
-Сумма: {amount} рублей. 
+        msg = f""" ⚽️ Ваш заказ на сумму: {amount} рублей подтвержден! 
 
-Для того, чтобы получить свой прогноз жми на кнопку внизу."""
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Забрать прогноз", url=config.MANAGER_URL)]])
+Нажмите кнопку внизу, чтобы вернуться в диалог и забрать свой прогноз."""
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("👉🏻 Забрать прогноз", url=config.MANAGER_URL)]])
         context.bot.send_message(chat_id=user_id, text=msg, reply_markup=keyboard)
 
         # Get the screenshot info from the database
