@@ -5,8 +5,8 @@ SALES_MANAGERS = [1499768187,56424449]
 ANALYTICS = [56424449]  # Add your analytics group's user IDs here
 
 BOT_TOKEN = "5806879239:AAHmFrPnB5k28HtyLgGD3D9ERQh2euymnt8"
-MANAGER_URL = "https://t.me/BRUTAL_S"
-BOT_URL = "https://t.me/brubetbot"
+MANAGER_URL = "https://t.me/Artbet_k1ng"
+BOT_URL = "https://t.me/artkingsbot"
 
 
 
