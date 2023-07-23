@@ -173,6 +173,7 @@ def main() -> None:
     updater = Updater(BOT_TOKEN, use_context=True) 
 
     dispatcher = updater.dispatcher
+    dispatcher.add_handler(conv_handler_salesman)
     dispatcher.add_handler(conv_handler_payments)
 
     conv_handler = ConversationHandler(
@@ -204,6 +205,8 @@ def main() -> None:
 
 
     dispatcher.add_handler(conv_handler)
+
+
     logger.info(f"Handlers: {dispatcher.handlers}")
 
     dispatcher.add_handler(CommandHandler("start", start))
@@ -215,6 +218,12 @@ def main() -> None:
     dispatcher.add_handler(CallbackQueryHandler(decline_invoice, pattern='decline_.*'))
     dispatcher.add_handler(CallbackQueryHandler(do_nothing, pattern='do_nothing'))
     dispatcher.add_handler(MessageHandler(Filters.photo | Filters.document, handle_screenshot))
+    dispatcher.add_handler(CallbackQueryHandler(set_invoice_type_outgoing, pattern='outgoing'))
+    dispatcher.add_handler(CallbackQueryHandler(set_invoice_type_incoming, pattern='incoming'))
+
+    
+
+
 
     dispatcher.add_error_handler(error_callback)
 
@@ -225,5 +234,4 @@ def main() -> None:
 if __name__ == '__main__':
     database.create_table()
     main()
-
 
