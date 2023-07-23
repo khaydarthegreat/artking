@@ -32,6 +32,9 @@ def invoice(update: Update, context: CallbackContext) -> None:
 
     results = []
 
+    # Fetch current salesman from the database
+    current_salesman = database.get_current_salesman()
+
     for product in products:
         # Log the extracted amount and product
         logger.info(f'Creating invoice for amount: {amount}, product: {product}')
@@ -41,9 +44,9 @@ def invoice(update: Update, context: CallbackContext) -> None:
         results.append(InlineQueryResultArticle(
             id=str(uuid.uuid4()),  # Generate a random ID for this result
             title=f"Создать счет • {amount} рублей",
-            description=f"Продукт: {product}",  
+            description=f"Продукт: {product} | Продажник: {current_salesman}",  
             input_message_content=InputTextMessageContent(f"""🧾 Заказ на сумму: {amount} рублей.
-        
+
 Для оплаты, нажмите кнопку Оплатить ⬇️ """),
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("💳 Оплатить", url=pay_url)]
@@ -51,6 +54,7 @@ def invoice(update: Update, context: CallbackContext) -> None:
             thumb_url="https://cdn-icons-png.flaticon.com/512/1117/1117142.png",  # Replace this with your actual image URL
         ))
 
+    # Send all results
     context.bot.answer_inline_query(update.inline_query.id, results, cache_time=0)
 
 def handle_payment(update: Update, context: CallbackContext) -> None:
@@ -176,57 +180,111 @@ def handle_screenshot(update: Update, context: CallbackContext) -> None:
 
 
 def approve_invoice(update: Update, context: CallbackContext) -> None:
+    try:
+        query = update.callback_query
+        data = query.data.split('_')
+        invoice_id = data[1]
+
+        if len(data) == 2:
+            # This is the first click on the "Approve" button, ask for confirmation
+            if not "Вы точно хотите пометить счет номер" in query.message.text:
+                keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Да", callback_data=f'approve_{invoice_id}_confirm'),
+                                                InlineKeyboardButton("❌ Нет", callback_data='do_nothing')]])
+                context.bot.send_message(chat_id=query.message.chat_id, text=f"⚠️ Вы точно хотите пометить счет номер {invoice_id} как оплаченый?", reply_markup=keyboard)
+        elif len(data) == 3:
+            # The manager has confirmed the approval, now ask for type
+            if not "Пожалуйста, выберите тип продажи:" in query.message.text:
+                keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("📥 Входящий", callback_data=f'incoming_{invoice_id}'),
+                                                  InlineKeyboardButton("📤 Исходящий", callback_data=f'outgoing_{invoice_id}')]])
+
+                query.edit_message_text(text=f"⚠️ Выберите тип продажи. ⚠️", reply_markup=keyboard)
+    except Exception as e:
+        logger.error(f"An error occurred in approve_invoice: {e}")
+
+        
+
+
+
+def set_invoice_type_outgoing(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
     invoice_id = query.data.split('_')[1]
-
-    if len(query.data.split('_')) == 2:
-        # This is the first click on the "Approve" button, ask for confirmation
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Да", callback_data=f'approve_{invoice_id}_confirm'),
-                                          InlineKeyboardButton("Нет", callback_data='do_nothing'),
-                                          ]])
-        context.bot.send_message(chat_id=query.message.chat_id, text=f"Вы точно хотите пометить счет номер {invoice_id} как оплаченый?", reply_markup=keyboard)
-    else:
-        # The manager has confirmed the approval
-        database.update_invoice_status(invoice_id, 'PAID')
+    database.update_invoice_status(invoice_id, 'PAID')
+    database.update_invoice_type(invoice_id, 'Outgoing')  # Assuming you have this function defined
+    query.edit_message_text(text=f"""✅ Счет {invoice_id} был подтвержден!
     
-        logger.info(f"Approve Invoice: Invoice ID = {invoice_id}")
-        invoice_details = database.get_invoice_details(invoice_id)
-        
-        logger.info(f"approve_invoice: get_invoice_details returned {invoice_details}")  
+Тип продажи: 📤 Исходящий.""")
 
-        if invoice_details is None:
-            print("approve_invoice: invoice_details is None!")  # Add this line
-            return
-        
-        user_id = invoice_details["user_id"]
-        amount = invoice_details["amount"]
-        name = invoice_details["name"]
-        msg = f""" ⚽️ Ваш заказ на сумму: {amount} рублей подтвержден! 
+    invoice_details = database.get_invoice_details(invoice_id)
+    if invoice_details is None:
+        print("set_invoice_type_outgoing: invoice_details is None!")
+        return
 
-Нажмите кнопку внизу, чтобы вернуться в диалог и забрать свой прогноз."""
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("👉🏻 Забрать прогноз", url=config.MANAGER_URL)]])
-        context.bot.send_message(chat_id=user_id, text=msg, reply_markup=keyboard)
+    user_id = invoice_details["user_id"]
+    amount = invoice_details["amount"]
+    name = invoice_details["name"]
+    msg = f""" ⚽️ Ваш заказ на сумму: {amount} рублей подтвержден!
 
-        # Get the screenshot info from the database
-        screenshot_id = database.get_screenshot_id(invoice_id)
-        if screenshot_id is not None:
-            from_chat_id = invoice_details["user_id"]
+👇🏻 Нажмите кнопку внизу, чтобы вернуться в диалог и забрать свой прогноз."""
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("👉🏻 Забрать прогноз", url=config.MANAGER_URL)]])
+    context.bot.send_message(chat_id=user_id, text=msg, reply_markup=keyboard)
 
-            for manager_id in config.PAYMENT_MANAGERS:
-                # Forward the screenshot to the payment manager
-                context.bot.forward_message(chat_id=manager_id, from_chat_id=from_chat_id, message_id=screenshot_id)
+    # Get the screenshot info from the database
+    screenshot_id = database.get_screenshot_id(invoice_id)
+    if screenshot_id is not None:
+        from_chat_id = invoice_details["user_id"]
+        for manager_id in config.PAYMENT_MANAGERS:
+            # Forward the screenshot to the payment manager
+            context.bot.forward_message(chat_id=manager_id, from_chat_id=from_chat_id, message_id=screenshot_id)
 
-                # Send the message to the payment manager
-                context.bot.send_message(chat_id=manager_id, text=f"""🆕 Новый перевод на сумму {amount} рублей.
-💳: {database.get_current_card_and_bank()} 
-     
-Счет №: {invoice_id}
-Клиент: {name}
-User ID: {from_chat_id}
-                """)
+            # Send the message to the payment manager
+            context.bot.send_message(chat_id=manager_id, text=f"""🆕 Новый перевод на сумму {amount} рублей.
+    💳: {database.get_current_card_and_bank()} 
+
+    Счет №: {invoice_id}
+    Клиент: {name}
+    User ID: {from_chat_id}
+            """)
 
 
-        query.edit_message_text(text=f"Счет {invoice_id} был подтвержден.")  # This will update the confirmation message to the approval message
+def set_invoice_type_incoming(update: Update, context: CallbackContext) -> None:
+    query = update.callback_query
+    invoice_id = query.data.split('_')[1]
+    database.update_invoice_status(invoice_id, 'PAID')
+    database.update_invoice_type(invoice_id, 'Incoming')  # Assuming you have this function defined
+    query.edit_message_text(text=f"""✅ Счет {invoice_id} был подтвержден!
+    
+Тип продажи: 📥 Входящий.""")
+
+    invoice_details = database.get_invoice_details(invoice_id)
+    if invoice_details is None:
+        print("set_invoice_type_incoming: invoice_details is None!")
+        return
+
+    user_id = invoice_details["user_id"]
+    amount = invoice_details["amount"]
+    name = invoice_details["name"]
+    msg = f""" ⚽️ Ваш заказ на сумму: {amount} рублей подтвержден!
+
+👇🏻 Нажмите кнопку внизу, чтобы вернуться в диалог и забрать свой прогноз."""
+    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("👉🏻 Забрать прогноз", url=config.MANAGER_URL)]])
+    context.bot.send_message(chat_id=user_id, text=msg, reply_markup=keyboard)
+
+    # Get the screenshot info from the database
+    screenshot_id = database.get_screenshot_id(invoice_id)
+    if screenshot_id is not None:
+        from_chat_id = invoice_details["user_id"]
+        for manager_id in config.PAYMENT_MANAGERS:
+            # Forward the screenshot to the payment manager
+            context.bot.forward_message(chat_id=manager_id, from_chat_id=from_chat_id, message_id=screenshot_id)
+
+            # Send the message to the payment manager
+            context.bot.send_message(chat_id=manager_id, text=f"""🆕 Новый перевод на сумму {amount} рублей.
+    💳: {database.get_current_card_and_bank()} 
+
+    Счет №: {invoice_id}
+    Клиент: {name}
+    User ID: {from_chat_id}
+            """)
 
 
 
